@@ -1,20 +1,174 @@
-# Reproducible Research: Peer Assessment 1
+---
+title: "Peer Assessment 1"
+author: "gadfly1974"
+date: "Sunday, July 20, 2014"
+output: html_document
+---
 
 
-## Loading and preprocessing the data
+### Loading and Preprocessing the data
+
+Load data from ZIP file on local hard drive
+
+```{r}
+activity <- read.csv("C:/Users/Andy/Dropbox/DataScienceCoursera/activity.csv")
+```
+
+Transform data to a new data frame with timestamp column, class "POSIXct" "POSIXt"
+
+```{r}
+activity$interval <- formatC(activity$interval, width = 4, format = "d", flag = "0")
+activitydatetime <- transform(activity, timestamp=as.POSIXct(paste(date, interval), format="%Y-%m-%d %H%M"))
+```
+
+Convert data frame to data table
+
+```{r}
+library("data.table", lib.loc="C:/Users/Andy/Dropbox/R/R/R-3.0.3/library")
+
+activity.dt <- as.data.table(activitydatetime)
+rm(activity, activitydatetime)
+```
 
 
+Omit NA observations
 
-## What is mean total number of steps taken per day?
-
-
-
-## What is the average daily activity pattern?
-
+```{r}
+activityna.dt <- na.omit(activity.dt)
+```
 
 
-## Imputing missing values
+### What is mean total number of steps taken per day?
+
+Calculate total steps per day
+
+```{r}
+totalsteps <- activityna.dt[,sum(steps),by="date"]
+```
+
+Plot histogram of data without NAs
+
+```{r, echo=FALSE}
+hist(totalsteps$V1, breaks=10)
+```
+
+Find the mean and median by date
+
+```{r}
+meanbydate <- activityna.dt[,mean(steps),by="date"]
+meanbydate
+medianbydate <- activityna.dt[,median(steps),by="date"]
+medianbydate
+```
 
 
+### What is the average daily activity pattern?
 
-## Are there differences in activity patterns between weekdays and weekends?
+Calculate time series averages
+```{r}
+meanbyinterval <- activityna.dt[,mean(steps),by="interval"]
+```
+
+Create a time series plot. Midnight = 0 and 12:05am = 1. 11:55pm = 288.
+Time 100 represents 100 times 5 or 500 minutes after midnight, 8:20am.
+```{r, echo=FALSE}
+plot.ts(meanbyinterval$V1)
+```
+
+It looks like the subject is typically asleep from time 0 (midnight) to time 70*5, 350 minutes
+after midnight, or 5:50 am. Perhaps the subject has an alarm set for 6am each morning.
+
+Find the maximum interval
+```{r}
+which.max(meanbyinterval$V1)
+meanbyinterval$interval[104]
+```
+This shows a time of 8:35AM
+
+Next, calculate number of missing values in original dataset
+```{r}
+colSums(is.na(activity.dt))
+```
+There are 2304 NAs in the original dataset.
+
+
+### Imputing missing values
+
+Next, I created a large list of intervals for checking NA values by interval
+```{r}
+intervals61 <- rep_len(meanbyinterval$interval, 17568)
+```
+
+And also a large list of interval means for checking NA values by interval
+```{r}
+intervalmean61 <- rep_len(meanbyinterval$V1, 17568)
+```
+
+Then, I created a dataframe for checking against the NAs in original data set
+```{r}
+meanbyinterval61 <- cbind(intervals61, intervalmean61)
+## This creates a matrix, convert to data frame
+meanbyinterval61.df <- as.data.frame(meanbyinterval61)
+## Then change the intervalmean column to numeric from character
+meanbyinterval61.df$intervalmean61 <- as.numeric(as.character(meanbyinterval61.df$intervalmean61))
+```
+
+I needed significant help to complete the next step of my analysis.
+https://class.coursera.org/repdata-004/forum/thread?thread_id=82
+and http://stackoverflow.com/questions/24847299/using-ifelse-to-replace-nas-in-one-data-frame-by-referencing-another-data-fram
+helped me figure out how to impute mean averages by interval to the original data set for NAs only
+
+```{r}
+activity.dt$steps <- ifelse(is.na(activity.dt$steps) == TRUE, meanbyinterval61.df$intervalmean61
+                            [meanbyinterval61.df$intervals61 %in% activity.dt$interval],
+                            activity.dt$steps)
+```
+
+I repeated the same code from above to calculate the total steps per day with imputed values.
+```{r}
+totalsteps <- activityna.dt[,sum(steps),by="date"]
+```
+
+The histogram is a match to the one made before imputing the NA values
+```{r, echo=FALSE}
+hist(totalsteps$V1, breaks=10)
+```
+
+The mean and median values by date also did not change
+```{r}
+meanbydate <- activityna.dt[,mean(steps),by="date"]
+meanbydate
+medianbydate <- activityna.dt[,median(steps),by="date"]
+medianbydate
+```
+
+
+### Are there differences in activity patterns between weekdays and weekends?
+
+To create the final panel plot, I converted the day of the week for each observation to a factor
+```{r}
+weekdayweekendfactor <- strftime(activity.dt$date, "%w")
+## Weekday as a decimal number (0-6, Sunday is 0)
+```
+
+Then I changed each factor from 0 or 6 to "weekend", 1:5 to "weekday"
+```{r}
+weekdayweekendfactor <- gsub("1", "weekday", weekdayweekendfactor)
+weekdayweekendfactor <- gsub("2", "weekday", weekdayweekendfactor)
+weekdayweekendfactor <- gsub("3", "weekday", weekdayweekendfactor)
+weekdayweekendfactor <- gsub("4", "weekday", weekdayweekendfactor)
+weekdayweekendfactor <- gsub("5", "weekday", weekdayweekendfactor)
+weekdayweekendfactor <- gsub("6", "weekend", weekdayweekendfactor)
+weekdayweekendfactor <- gsub("0", "weekend", weekdayweekendfactor)
+```
+
+Next, I activated the lattice package and attempted to reproduce the required diagram
+```{r}
+library("lattice", lib.loc="C:/Users/Andy/Dropbox/R/R/R-3.0.3/library")
+xyplot(steps ~ date + interval | weekdayweekendfactor, data = activity.dt, type = "l", layout = c(1, 2))
+```
+
+
+### Request for feedback
+
+As you can see, I created a plot of every data point, not a comparison between weekend and weekday average steps by time interval. Please give me feedback in your comments if you see a solution to my mistake. Thank you.
